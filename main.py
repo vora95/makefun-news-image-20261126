@@ -1,44 +1,55 @@
 #!/usr/bin/env python3
-"""Entry program for make.fun news-image-20261126.
+"""News-image entry runner for the 26 November 2026 front page.
 
-Writes /output/entry.png: a deterministic copy of the front-page image
-(entry.png) shipped in this repository — "THE WORLD TODAY", 33 stories
-from Thursday 26 November 2026 plus a world map of the day's datelines.
-Standard library only, no network. The output is byte-identical on every
-run: same source bytes, same sha256.
+The repository ships the finished front page as entry.png. This program
+copies it, unchanged, to the output directory the harness names, after
+checking the file's fingerprint first. It needs nothing from the network
+and nothing beyond the Python standard library, so two runs always write
+the same bytes.
 """
-import hashlib
+
+from hashlib import sha256
+from pathlib import Path
+from shutil import copyfile
 import os
-import shutil
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "entry.png")
-EXPECTED_SHA256 = "b13b18e6fc2cc419267ebd8a26de554ab792c77a42ce5161a6e85bb06a94909d"
+# Fingerprint of the front page as rendered for this entry ("THE WORLD
+# TODAY", 33 stories from Thursday 26 November 2026). The copy is refused
+# unless the shipped file matches it exactly.
+FRONT_PAGE_SHA256 = "b13b18e6fc2cc419267ebd8a26de554ab792c77a42ce5161a6e85bb06a94909d"
+FRONT_PAGE_NAME = "entry.png"
 
 
-def sha256_of(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def fingerprint(path):
+    """Return the hex SHA-256 of the file at *path*."""
+    digest = sha256()
+    with open(path, "rb") as handle:
+        while True:
+            chunk = handle.read(1 << 16)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def main():
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    dst = os.path.join(out_dir, "entry.png")
-    if sha256_of(SRC) != EXPECTED_SHA256:
-        print("source entry.png sha256 mismatch", file=sys.stderr)
+def copy_entry():
+    """Copy the shipped front page to the harness output directory."""
+    here = Path(__file__).resolve().parent
+    source = here / FRONT_PAGE_NAME
+    if fingerprint(source) != FRONT_PAGE_SHA256:
+        print("refusing: shipped entry.png fingerprint mismatch", file=sys.stderr)
         return 1
-    shutil.copyfile(SRC, dst)
-    if sha256_of(dst) != EXPECTED_SHA256:
-        print("output entry.png sha256 mismatch", file=sys.stderr)
+    out_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / FRONT_PAGE_NAME
+    copyfile(source, target)
+    if fingerprint(target) != FRONT_PAGE_SHA256:
+        print("refusing: written entry.png fingerprint mismatch", file=sys.stderr)
         return 1
-    print("wrote", dst, "sha256", EXPECTED_SHA256)
+    print(f"wrote {target} sha256 {FRONT_PAGE_SHA256}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(copy_entry())
